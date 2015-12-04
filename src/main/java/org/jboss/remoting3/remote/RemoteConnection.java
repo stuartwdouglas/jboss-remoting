@@ -60,6 +60,7 @@ final class RemoteConnection {
     private volatile Result<ConnectionHandlerFactory> result;
     private volatile SaslWrapper saslWrapper;
     private final RemoteConnectionProvider remoteConnectionProvider;
+    private volatile long nextHeatbeat = -1;
 
     RemoteConnection(final Pool<ByteBuffer> messageBufferPool, final ConnectedStreamChannel underlyingChannel, final ConnectedMessageChannel channel, final OptionMap optionMap, final RemoteConnectionProvider remoteConnectionProvider) {
         this.messageBufferPool = messageBufferPool;
@@ -292,8 +293,6 @@ final class RemoteConnection {
 
         public void send(Pooled<ByteBuffer> pooled, final boolean close) {
             synchronized (queue) {
-                XnioExecutor.Key heartKey = this.heartKey;
-                if (heartKey != null) heartKey.remove();
                 if (closed) { pooled.free(); return; }
                 if (close) { closed = true; }
                 final ConnectedMessageChannel channel = getChannel();
@@ -328,7 +327,11 @@ final class RemoteConnection {
                         }
                         RemoteLogger.conn.logf(FQCN, Logger.Level.TRACE, null, "Flushed channel (direct)");
                         if (! close) {
-                            this.heartKey = channel.getWriteThread().executeAfter(heartbeatCommand, heartbeatInterval, TimeUnit.MILLISECONDS);
+                            if(this.heartKey == null) {
+                                this.heartKey = channel.getIoThread().executeAfter(heartbeatCommand, heartbeatInterval, TimeUnit.MILLISECONDS);
+                            } else {
+                                nextHeatbeat = System.currentTimeMillis() + heartbeatInterval;
+                            }
                         }
                     } else {
                         queue.add(pooled);
@@ -352,6 +355,15 @@ final class RemoteConnection {
 
     private final Runnable heartbeatCommand = new Runnable() {
         public void run() {
+            synchronized (writeListener.queue) {
+                long time = System.currentTimeMillis();
+                if (nextHeatbeat > 0 && time < nextHeatbeat) {
+                    writeListener.heartKey = channel.getIoThread().executeAfter(heartbeatCommand, nextHeatbeat - time, TimeUnit.MILLISECONDS);
+                } else {
+                    writeListener.heartKey = null;
+                }
+                nextHeatbeat = -1;
+            }
             sendAlive();
         }
     };
