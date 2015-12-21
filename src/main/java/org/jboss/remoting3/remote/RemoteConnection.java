@@ -231,7 +231,9 @@ final class RemoteConnection {
                             queue.poll().free();
                         } else {
                             // try again later
-                            return;
+                            if(!channel.flush()) {
+                                return;
+                            }
                         }
                     }
                     if (channel.flush()) {
