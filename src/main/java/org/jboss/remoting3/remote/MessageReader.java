@@ -178,21 +178,27 @@ final class MessageReader {
     }
 
     public void suspendReads() {
-        synchronized (lock) {
-            getSourceChannel().suspendReads();
-        }
+        getSourceChannel().getIoThread().execute(() -> {
+            synchronized (lock) {
+                getSourceChannel().suspendReads();
+            }
+        });
     }
 
     public void resumeReads() {
-        synchronized (lock) {
-            getSourceChannel().resumeReads();
-        }
+        getSourceChannel().getIoThread().execute(() -> {
+            synchronized (lock) {
+                getSourceChannel().resumeReads();
+            }
+        });
     }
 
     public void wakeupReads() {
-        synchronized (lock) {
-            getSourceChannel().wakeupReads();
-        }
+        getSourceChannel().getIoThread().execute(() -> {
+            synchronized (lock) {
+                getSourceChannel().wakeupReads();
+            }
+        });
     }
 
     public void shutdownReads() throws IOException {
