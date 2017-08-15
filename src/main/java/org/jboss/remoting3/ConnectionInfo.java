@@ -160,7 +160,7 @@ final class ConnectionInfo {
                         if (! doConnect) {
                             return null;
                         }
-                        futureResult = new FutureResult<>(endpoint.getExecutor());
+                        futureResult = new FutureResult<>();
                         pendingAttempts.put(authenticationConfiguration, futureResult);
                     }
                     assert doConnect;

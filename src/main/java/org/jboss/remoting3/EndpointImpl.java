@@ -489,7 +489,7 @@ final class EndpointImpl extends AbstractHandleableCloseable<Endpoint> implement
             // no connection currently exists
             return null;
         }
-        final FutureResult<ConnectionPeerIdentity> futureResult = new FutureResult<>(getExecutor());
+        final FutureResult<ConnectionPeerIdentity> futureResult = new FutureResult<>();
         futureResult.addCancelHandler(futureConnection);
         futureConnection.addNotifier(new IoFuture.HandlingNotifier<Connection, FutureResult<ConnectionPeerIdentity>>() {
             public void handleCancelled(final FutureResult<ConnectionPeerIdentity> attachment) {
@@ -565,7 +565,7 @@ final class EndpointImpl extends AbstractHandleableCloseable<Endpoint> implement
                     return new FailedIoFuture<>(new UnknownURISchemeException("No connection provider for URI scheme \"" + scheme + "\" is installed"));
                 }
                 final ConnectionProvider connectionProvider = protocolRegistration.getProvider();
-                final FutureResult<Connection> futureResult = new FutureResult<Connection>(getExecutor());
+                final FutureResult<Connection> futureResult = new FutureResult<Connection>();
                 // Mark the stack because otherwise debugging connect problems can be incredibly tough
                 final StackTraceElement[] mark = Thread.currentThread().getStackTrace();
                 final UnaryOperator<SaslClientFactory> finalFactoryOperator = factoryOperator;

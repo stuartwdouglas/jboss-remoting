@@ -155,7 +155,7 @@ public final class ConnectionPeerIdentityContext extends PeerIdentityContext {
         }
         IoFuture<ConnectionPeerIdentity> ioFuture = futureAuths.get(configuration);
         if (ioFuture == null) {
-            FutureResult<ConnectionPeerIdentity> futureResult = new FutureResult<>(connection.getEndpoint().getExecutor());
+            FutureResult<ConnectionPeerIdentity> futureResult = new FutureResult<>();
             final IoFuture<ConnectionPeerIdentity> appearing = futureAuths.putIfAbsent(configuration, futureResult.getIoFuture());
             if (appearing != null) {
                 ioFuture = appearing;

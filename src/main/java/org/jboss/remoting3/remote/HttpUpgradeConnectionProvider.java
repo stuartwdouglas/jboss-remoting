@@ -99,7 +99,7 @@ final class HttpUpgradeConnectionProvider extends RemoteConnectionProvider {
             return new FailedIoFuture<>(new IOException(e));
         }
 
-        final FutureResult<StreamConnection> returnedFuture = new FutureResult<>(getExecutor());
+        final FutureResult<StreamConnection> returnedFuture = new FutureResult<>();
 
         ChannelListener<StreamConnection> upgradeListener = new UpgradeListener<StreamConnection>(StreamConnection.class, newUri, openListener, returnedFuture);
         IoFuture<StreamConnection> rawFuture = super.createConnection(uri, bindAddress, destination, connectOptions, upgradeListener);
@@ -129,7 +129,7 @@ final class HttpUpgradeConnectionProvider extends RemoteConnectionProvider {
             return new FailedIoFuture<>(new IOException(e));
         }
 
-        final FutureResult<SslConnection> returnedFuture = new FutureResult<>(getExecutor());
+        final FutureResult<SslConnection> returnedFuture = new FutureResult<>();
         final OptionMap modifiedOptions = OptionMap.builder().addAll(options).set(Options.SSL_STARTTLS, false).getMap();
 
         ChannelListener<StreamConnection> upgradeListener = new UpgradeListener<SslConnection>(SslConnection.class, newUri, openListener, returnedFuture);

@@ -105,7 +105,7 @@ class ConnectionImpl extends AbstractHandleableCloseable<Connection> implements 
     }
 
     public IoFuture<Channel> openChannel(final String serviceType, final OptionMap optionMap) {
-        FutureResult<Channel> result = new FutureResult<Channel>(getExecutor());
+        FutureResult<Channel> result = new FutureResult<Channel>();
         result.addCancelHandler(connectionHandler.open(serviceType, result, optionMap));
         return result.getIoFuture();
     }
@@ -188,63 +188,62 @@ class ConnectionImpl extends AbstractHandleableCloseable<Connection> implements 
             // ignore
             return;
         }
-        getExecutor().execute(() -> {
-            final SaslServer saslServer;
-            final IntIndexHashMap<Auth> authMap = this.authMap;
-            final SSLSession sslSession = connectionHandler.getSslSession();
+
+        final SaslServer saslServer;
+        final IntIndexHashMap<Auth> authMap = this.authMap;
+        final SSLSession sslSession = connectionHandler.getSslSession();
+        try {
+            saslServer = authenticationFactory.createMechanism(mechName, f ->
+                new ServerNameSaslServerFactory(new ProtocolSaslServerFactory(sslSession != null ? new SSLSaslServerFactory(f, connectionHandler::getSslSession) : f, saslProtocol), connectionHandler.getLocalSaslServerName())
+            );
+        } catch (SaslException e) {
+            log.trace("Authentication failed at mechanism creation", e);
             try {
-                saslServer = authenticationFactory.createMechanism(mechName, f ->
-                    new ServerNameSaslServerFactory(new ProtocolSaslServerFactory(sslSession != null ? new SSLSaslServerFactory(f, connectionHandler::getSslSession) : f, saslProtocol), connectionHandler.getLocalSaslServerName())
-                );
-            } catch (SaslException e) {
-                log.trace("Authentication failed at mechanism creation", e);
-                try {
-                    Auth oldAuth = authMap.put(new Auth(id, new RejectingSaslServer()));
-                    if (oldAuth != null) oldAuth.dispose();
-                    connectionHandler.sendAuthReject(id);
-                } catch (IOException e1) {
-                    log.trace("Failed to send auth reject", e1);
-                }
-                return;
+                Auth oldAuth = authMap.put(new Auth(id, new RejectingSaslServer()));
+                if (oldAuth != null) oldAuth.dispose();
+                connectionHandler.sendAuthReject(id);
+            } catch (IOException e1) {
+                log.trace("Failed to send auth reject", e1);
             }
-            // clear out any old auth
-            final Auth auth = new Auth(id, saslServer);
-            Auth oldAuth = authMap.put(auth);
-            if (oldAuth != null) oldAuth.dispose();
-            final byte[] challenge;
+            return;
+        }
+        // clear out any old auth
+        final Auth auth = new Auth(id, saslServer);
+        Auth oldAuth = authMap.put(auth);
+        if (oldAuth != null) oldAuth.dispose();
+        final byte[] challenge;
+        try {
+            challenge = saslServer.evaluateResponse(initialResponse);
+        } catch (SaslException e) {
+            log.trace("Authentication failed at response evaluation", e);
             try {
-                challenge = saslServer.evaluateResponse(initialResponse);
-            } catch (SaslException e) {
-                log.trace("Authentication failed at response evaluation", e);
-                try {
-                    connectionHandler.sendAuthReject(id);
-                } catch (IOException e1) {
-                    authMap.remove(auth);
-                    auth.dispose();
-                    log.trace("Failed to send auth reject", e1);
-                }
-                return;
+                connectionHandler.sendAuthReject(id);
+            } catch (IOException e1) {
+                authMap.remove(auth);
+                auth.dispose();
+                log.trace("Failed to send auth reject", e1);
             }
-            if (saslServer.isComplete()) {
-                try {
-                    connectionHandler.sendAuthSuccess(id, challenge);
-                } catch (IOException e) {
-                    authMap.remove(auth);
-                    auth.dispose();
-                    log.trace("Failed to send auth success", e);
-                }
-                return;
-            } else {
-                try {
-                    connectionHandler.sendAuthChallenge(id, challenge);
-                } catch (IOException e) {
-                    authMap.remove(auth);
-                    auth.dispose();
-                    log.trace("Failed to send auth challenge", e);
-                }
-                return;
+            return;
+        }
+        if (saslServer.isComplete()) {
+            try {
+                connectionHandler.sendAuthSuccess(id, challenge);
+            } catch (IOException e) {
+                authMap.remove(auth);
+                auth.dispose();
+                log.trace("Failed to send auth success", e);
             }
-        });
+            return;
+        } else {
+            try {
+                connectionHandler.sendAuthChallenge(id, challenge);
+            } catch (IOException e) {
+                authMap.remove(auth);
+                auth.dispose();
+                log.trace("Failed to send auth challenge", e);
+            }
+            return;
+        }
     }
 
     void receiveAuthResponse(final int id, final byte[] response) {
@@ -253,55 +252,53 @@ class ConnectionImpl extends AbstractHandleableCloseable<Connection> implements 
             // ignore
             return;
         }
-        getExecutor().execute(() -> {
-            Auth auth = authMap.get(id);
+        Auth auth = authMap.get(id);
+        if (auth == null) {
+            auth = authMap.putIfAbsent(new Auth(id, new RejectingSaslServer()));
             if (auth == null) {
-                auth = authMap.putIfAbsent(new Auth(id, new RejectingSaslServer()));
-                if (auth == null) {
-                    // reject
-                    try {
-                        connectionHandler.sendAuthReject(id);
-                    } catch (IOException e1) {
-                        log.trace("Failed to send auth reject", e1);
-                    }
-                    return;
-                }
-            }
-            final SaslServer saslServer = auth.getSaslServer();
-            final byte[] challenge;
-            try {
-                challenge = saslServer.evaluateResponse(response);
-            } catch (SaslException e) {
-                log.trace("Authentication failed at response evaluation", e);
+                // reject
                 try {
                     connectionHandler.sendAuthReject(id);
                 } catch (IOException e1) {
-                    authMap.remove(auth);
-                    auth.dispose();
                     log.trace("Failed to send auth reject", e1);
                 }
                 return;
             }
-            if (saslServer.isComplete()) {
-                try {
-                    connectionHandler.sendAuthSuccess(id, challenge);
-                } catch (IOException e) {
-                    authMap.remove(auth);
-                    auth.dispose();
-                    log.trace("Failed to send auth success", e);
-                }
-                return;
-            } else {
-                try {
-                    connectionHandler.sendAuthChallenge(id, challenge);
-                } catch (IOException e) {
-                    authMap.remove(auth);
-                    auth.dispose();
-                    log.trace("Failed to send auth challenge", e);
-                }
-                return;
+        }
+        final SaslServer saslServer = auth.getSaslServer();
+        final byte[] challenge;
+        try {
+            challenge = saslServer.evaluateResponse(response);
+        } catch (SaslException e) {
+            log.trace("Authentication failed at response evaluation", e);
+            try {
+                connectionHandler.sendAuthReject(id);
+            } catch (IOException e1) {
+                authMap.remove(auth);
+                auth.dispose();
+                log.trace("Failed to send auth reject", e1);
             }
-        });
+            return;
+        }
+        if (saslServer.isComplete()) {
+            try {
+                connectionHandler.sendAuthSuccess(id, challenge);
+            } catch (IOException e) {
+                authMap.remove(auth);
+                auth.dispose();
+                log.trace("Failed to send auth success", e);
+            }
+            return;
+        } else {
+            try {
+                connectionHandler.sendAuthChallenge(id, challenge);
+            } catch (IOException e) {
+                authMap.remove(auth);
+                auth.dispose();
+                log.trace("Failed to send auth challenge", e);
+            }
+            return;
+        }
     }
 
     void receiveAuthDelete(final int id) {
@@ -310,11 +307,9 @@ class ConnectionImpl extends AbstractHandleableCloseable<Connection> implements 
             // ignore
             return;
         }
-        getExecutor().execute(() -> {
-            final Auth auth = authMap.removeKey(id);
-            if (auth != null) auth.dispose();
-            log.tracef("Deleted authentication ID %08x", id);
-        });
+        final Auth auth = authMap.removeKey(id);
+        if (auth != null) auth.dispose();
+        log.tracef("Deleted authentication ID %08x", id);
     }
 
     static final class Auth {
