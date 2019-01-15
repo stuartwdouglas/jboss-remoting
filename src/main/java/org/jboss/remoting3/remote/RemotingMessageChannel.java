@@ -171,7 +171,8 @@ public class RemotingMessageChannel extends TranslatingSuspendableChannel<Connec
                 res = channel.read(receiveBuffer);
             } while (res > 0);
 
-            if (! messageLengthPeeked()) { // message length hasn't been read in advance. The first 4 bytes form the length information.
+            boolean messageLengthPeeked = messageLengthPeeked();
+            if (! messageLengthPeeked) { // message length hasn't been read in advance. The first 4 bytes form the length information.
                 if (receiveBuffer.position() < 4) {
                     if (res == -1) {
                         receiveBuffer.clear();
@@ -188,7 +189,7 @@ public class RemotingMessageChannel extends TranslatingSuspendableChannel<Connec
             try {
                 int length;
 
-                if (messageLengthPeeked()) {
+                if (messageLengthPeeked) {
                     length = messageLength;
                 } else {
                     length = receiveBuffer.getInt();
@@ -200,7 +201,7 @@ public class RemotingMessageChannel extends TranslatingSuspendableChannel<Connec
                 if (receiveBuffer.remaining() < length) {
                     if (res == -1) {
                         receiveBuffer.clear();
-                    } else {
+                    } else if (!messageLengthPeeked) {
                         Buffers.unget(receiveBuffer, 4);
                         receiveBuffer.compact();
                     }
