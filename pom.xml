@@ -29,7 +29,7 @@
 
     <groupId>org.jboss.remoting</groupId>
     <artifactId>jboss-remoting</artifactId>
-    <version>4.0.25.Final-redhat-1</version>
+    <version>4.0.25.Final-redhat-1-jbeap-16227</version>
 
     <packaging>jar</packaging>
 
