@@ -143,9 +143,14 @@ public class RemotingMessageChannel extends TranslatingSuspendableChannel<Connec
             if (isReadShutDown()) {
                 return -1;
             }
-            int messageLength = readMessageLength();
-            if (messageLength <= 0) {
-                return messageLength;
+            int messageLength;
+            if(messageLengthPeeked()) {
+                messageLength = readMessageLength();
+            } else {
+                messageLength = readMessageLength();
+                if (messageLength <= 0) {
+                    return messageLength;
+                }
             }
             if (messageLength > buffer.original.getResource().capacity()
                     && messageLength < RemotingOptions.MAX_RECEIVE_BUFFER_SIZE) {
@@ -204,12 +209,15 @@ public class RemotingMessageChannel extends TranslatingSuspendableChannel<Connec
                     } else if (!messageLengthPeeked) {
                         Buffers.unget(receiveBuffer, 4);
                         receiveBuffer.compact();
+                    } else {
+                        receiveBuffer.compact();
                     }
                     log.tracef("Did not read enough bytes for a full message");
                     clearReadReady();
                     // must be <= 0
                     return res;
                 }
+                messageLength = null;
                 if (buffer.hasRemaining()) {
                     log.tracef("Copying message from %s into %s", receiveBuffer, buffer);
                     Buffers.copy(buffer, Buffers.slice(receiveBuffer, length));
@@ -221,8 +229,6 @@ public class RemotingMessageChannel extends TranslatingSuspendableChannel<Connec
                 receiveBuffer.compact();
                 return length;
             } finally {
-                messageLength = null;
-
                 if (res != -1) {
                     if (receiveBuffer.position() >= 4 && receiveBuffer.position() >= 4 + receiveBuffer.getInt(0)) {
                         // there's another packet ready to go
