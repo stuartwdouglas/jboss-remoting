@@ -209,8 +209,8 @@ public class RemotingMessageChannel extends TranslatingSuspendableChannel<Connec
                         receiveBuffer.clear();
                     } else if (!messageLengthPeeked) {
                         Buffers.unget(receiveBuffer, 4);
-                        receiveBuffer.compact();
                     }
+                    receiveBuffer.compact();
                     log.tracef("Did not read enough bytes for a full message");
                     clearReadReady();
                     // must be <= 0
