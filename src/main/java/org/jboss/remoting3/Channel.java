@@ -64,6 +64,19 @@ public interface Channel extends Attachable, HandleableCloseable<Channel>, Confi
     void receiveMessage(Receiver handler);
 
     /**
+     * Initiate processing of the next message, when it comes in.  This method does not block;
+     * instead the handler is called asynchronously (possibly in another thread) if/when the next message arrives.
+     *
+     * This method differs from {@link #receiveMessage(Receiver)} in that the handler might be called directly from the IO
+     * thread, and as such must be careful not to perform blocking IO. Not all channel implementation may support this.
+     *
+     * @param handler the handler for the next incoming message
+     */
+    default void receiveMessageInIOThread(Receiver handler) {
+        receiveMessage(handler);
+    }
+
+    /**
      * Determine whether an option is supported on this channel.
      *
      * @param option the option

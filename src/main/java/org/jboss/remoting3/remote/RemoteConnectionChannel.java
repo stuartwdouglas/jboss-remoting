@@ -38,6 +38,7 @@ import org.jboss.remoting3.Channel;
 import org.jboss.remoting3.ChannelBusyException;
 import org.jboss.remoting3.Connection;
 import org.jboss.remoting3.MessageCancelledException;
+import org.jboss.remoting3.MessageInputStream;
 import org.jboss.remoting3.MessageOutputStream;
 import org.jboss.remoting3.NotOpenException;
 import org.jboss.remoting3.RemotingOptions;
@@ -345,7 +346,12 @@ final class RemoteConnectionChannel extends AbstractHandleableCloseable<Channel>
         closeReads();
     }
 
-    public void receiveMessage(final Receiver handler) {
+
+    /**
+     * A bit of a hack, something cleaner should be done in later versions
+     * @param handler
+     */
+    public void receiveMessageInIOThread(final Receiver handler) {
         synchronized (connection.getLock()) {
             if (inboundMessageQueue.isEmpty()) {
                 if ((channelState & READ_CLOSED) != 0) {
@@ -366,6 +372,30 @@ final class RemoteConnectionChannel extends AbstractHandleableCloseable<Channel>
             }
             connection.getLock().notify();
         }
+    }
+
+    public void receiveMessage(final Receiver handler) {
+        receiveMessageInIOThread(new Receiver() {
+            @Override
+            public void handleError(Channel channel, IOException error) {
+                handler.handleError(channel, error);
+            }
+
+            @Override
+            public void handleEnd(Channel channel) {
+                handler.handleEnd(channel);
+            }
+
+            @Override
+            public void handleMessage(Channel channel, MessageInputStream message) {
+                getExecutor().execute(new Runnable() {
+                    @Override
+                    public void run() {
+                        handler.handleMessage(channel, message);
+                    }
+                });
+            }
+        });
     }
 
     private static Set<Option<?>> SUPPORTED_OPTIONS = Option.setBuilder()
@@ -427,7 +457,7 @@ final class RemoteConnectionChannel extends AbstractHandleableCloseable<Channel>
                             final Receiver receiver = nextReceiver;
                             nextReceiver = null;
                             try {
-                                getExecutor().execute(() -> receiver.handleMessage(RemoteConnectionChannel.this, inboundMessage.messageInputStream));
+                                receiver.handleMessage(RemoteConnectionChannel.this, inboundMessage.messageInputStream);
                                 ok2 = true;
                             } catch (Throwable t) {
                                 connection.handleException(new IOException("Fatal connection error", t));
