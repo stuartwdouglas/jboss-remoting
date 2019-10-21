@@ -334,6 +334,7 @@ public final class ConnectionPeerIdentityContext extends PeerIdentityContext {
                                 }
                                 safeDispose(saslClient);
                                 futureResult.setException(log.authenticationExtraResponse());
+                                authMap.remove(authentication);
                                 futureAuths.remove(configuration, futureResult.getIoFuture());
                                 return;
                             }
@@ -360,6 +361,7 @@ public final class ConnectionPeerIdentityContext extends PeerIdentityContext {
                     } else if (status == DELETE) {
                         safeDispose(saslClient);
                         futureResult.setException(log.serverRejectedAuthentication());
+                        authMap.remove(authentication);
                         futureAuths.remove(configuration, futureResult.getIoFuture());
                         return;
                     } else {
@@ -378,6 +380,11 @@ public final class ConnectionPeerIdentityContext extends PeerIdentityContext {
             }
             futureResult.setException(log.noAuthMechanismsLeft(triedStr));
             authMap.remove(authentication);
+            try {
+                connectionHandler.sendAuthDelete(id);
+            } catch (IOException ignored) {
+                log.trace("Send failed", ignored);
+            }
             futureAuths.remove(configuration, futureResult.getIoFuture());
             return;
         } finally {
